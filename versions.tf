@@ -7,6 +7,11 @@ terraform {
       version = "~> 3.100.0"
     }
   }
+
+  backend "azurerm" {
+    # Os parametros serao injetados via variaveis de ambiente ou argumentos de inicializacao no CI
+    key = "infra-aks.tfstate"
+  }
 }
 
 provider "azurerm" {
