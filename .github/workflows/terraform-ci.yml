@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Acao a ser executada no Terraform"
+        description: "Operacao desejada no Terraform"
         required: true
         default: "apply"
         type: choice
@@ -25,6 +25,9 @@ jobs:
   validate-and-scan:
     name: "Lint, Validate & Security Scan"
     runs-on: ubuntu-latest
+    # Executa sempre em push/PR ou quando o disparo manual for apply
+    # Pula a verificacao se o objetivo for exclusivamente destruir recursos
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action == 'apply'
 
     steps:
       - name: "Checkout Code"
@@ -170,6 +173,7 @@ jobs:
   destroy:
     name: "Terraform Destroy (FinOps Control)"
     runs-on: ubuntu-latest
+    # Esta condicao garante que o job sera executado quando selecionado manualmente no console
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
     environment: production
 
