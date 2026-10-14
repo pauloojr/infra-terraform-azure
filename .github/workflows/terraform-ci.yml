@@ -5,6 +5,16 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Acao a ser executada no Terraform"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - destroy
 
 permissions:
   id-token: write
@@ -48,7 +58,7 @@ jobs:
     name: "Terraform Plan"
     needs: validate-and-scan
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.action == 'apply'
 
     steps:
       - name: "Checkout Code"
@@ -73,19 +83,15 @@ jobs:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_BACKEND_RG: ${{ vars.AZURE_BACKEND_RG || secrets.AZURE_BACKEND_RG }}
+          TF_BACKEND_STORAGE: ${{ vars.AZURE_BACKEND_STORAGE_ACCOUNT || secrets.AZURE_BACKEND_STORAGE_ACCOUNT }}
+          TF_BACKEND_CONTAINER: ${{ vars.AZURE_BACKEND_CONTAINER || secrets.AZURE_BACKEND_CONTAINER }}
         run: |
           set -euo pipefail
-          
-          # Validacao defensiva de presenca das variaveis
-          if [ -z "${{ vars.AZURE_BACKEND_RG }}" ] || [ -z "${{ vars.AZURE_BACKEND_STORAGE_ACCOUNT }}" ] || [ -z "${{ vars.AZURE_BACKEND_CONTAINER }}" ]; then
-            echo "Erro: Variaveis de backend nao configuradas em Settings > Secrets and variables > Actions > Variables"
-            exit 1
-          fi
-
           terraform init \
-            -backend-config="resource_group_name=${{ vars.AZURE_BACKEND_RG }}" \
-            -backend-config="storage_account_name=${{ vars.AZURE_BACKEND_STORAGE_ACCOUNT }}" \
-            -backend-config="container_name=${{ vars.AZURE_BACKEND_CONTAINER }}" \
+            -backend-config="resource_group_name=${TF_BACKEND_RG}" \
+            -backend-config="storage_account_name=${TF_BACKEND_STORAGE}" \
+            -backend-config="container_name=${TF_BACKEND_CONTAINER}" \
             -backend-config="use_azuread_auth=true" \
             -backend-config="use_oidc=true"
 
@@ -104,3 +110,109 @@ jobs:
           name: tfplan
           path: tfplan
           retention-days: 1
+
+  apply:
+    name: "Terraform Apply"
+    needs: plan
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || github.event.inputs.action == 'apply')
+    environment: production
+
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v4
+
+      - name: "Azure Login via OIDC"
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: "Download Terraform Plan Artifact"
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+
+      - name: "Terraform Init (Remote Backend)"
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_BACKEND_RG: ${{ vars.AZURE_BACKEND_RG || secrets.AZURE_BACKEND_RG }}
+          TF_BACKEND_STORAGE: ${{ vars.AZURE_BACKEND_STORAGE_ACCOUNT || secrets.AZURE_BACKEND_STORAGE_ACCOUNT }}
+          TF_BACKEND_CONTAINER: ${{ vars.AZURE_BACKEND_CONTAINER || secrets.AZURE_BACKEND_CONTAINER }}
+        run: |
+          set -euo pipefail
+          terraform init \
+            -backend-config="resource_group_name=${TF_BACKEND_RG}" \
+            -backend-config="storage_account_name=${TF_BACKEND_STORAGE}" \
+            -backend-config="container_name=${TF_BACKEND_CONTAINER}" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+
+      - name: "Terraform Apply"
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: terraform apply -auto-approve tfplan
+
+  destroy:
+    name: "Terraform Destroy (FinOps Control)"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'destroy'
+    environment: production
+
+    steps:
+      - name: "Checkout Code"
+        uses: actions/checkout@v4
+
+      - name: "Azure Login via OIDC"
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.5"
+
+      - name: "Terraform Init (Remote Backend)"
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_BACKEND_RG: ${{ vars.AZURE_BACKEND_RG || secrets.AZURE_BACKEND_RG }}
+          TF_BACKEND_STORAGE: ${{ vars.AZURE_BACKEND_STORAGE_ACCOUNT || secrets.AZURE_BACKEND_STORAGE_ACCOUNT }}
+          TF_BACKEND_CONTAINER: ${{ vars.AZURE_BACKEND_CONTAINER || secrets.AZURE_BACKEND_CONTAINER }}
+        run: |
+          set -euo pipefail
+          terraform init \
+            -backend-config="resource_group_name=${TF_BACKEND_RG}" \
+            -backend-config="storage_account_name=${TF_BACKEND_STORAGE}" \
+            -backend-config="container_name=${TF_BACKEND_CONTAINER}" \
+            -backend-config="use_azuread_auth=true" \
+            -backend-config="use_oidc=true"
+
+      - name: "Terraform Destroy"
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_USE_AZUREAD: "true"
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: terraform destroy -auto-approve
