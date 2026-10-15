@@ -1,3 +1,9 @@
+# Obtem dinamicamente a versao estavel recomendada de Kubernetes para a regiao
+data "azurerm_kubernetes_service_versions" "current" {
+  location        = var.location
+  include_preview = false
+}
+
 resource "azurerm_resource_group" "rg" {
   name     = "rg-${var.environment}-aks"
   location = var.location
@@ -32,7 +38,8 @@ resource "azurerm_kubernetes_cluster" "aks" {
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   dns_prefix          = "aks-${var.environment}"
-  kubernetes_version  = "1.30.0"
+  # Utiliza a versao mais recente estavel de producao disponivel na regiao
+  kubernetes_version  = data.azurerm_kubernetes_service_versions.current.latest_version
 
   default_node_pool {
     name            = "system"
@@ -57,7 +64,6 @@ resource "azurerm_kubernetes_cluster" "aks" {
   }
 }
 
-# Node pool Spot dedicado para workloads de teste
 resource "azurerm_kubernetes_cluster_node_pool" "spot" {
   name                  = "spotpool"
   kubernetes_cluster_id = azurerm_kubernetes_cluster.aks.id
