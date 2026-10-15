@@ -4,18 +4,18 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.100.0"
+      version = ">= 3.116.0, < 4.0.0"
     }
   }
 
   backend "azurerm" {
-    # Os parametros serao injetados via variaveis de ambiente ou argumentos de inicializacao no CI
     key = "infra-aks.tfstate"
   }
 }
 
 provider "azurerm" {
   use_oidc = true
+
   features {
     resource_group {
       prevent_deletion_if_contains_resources = false
