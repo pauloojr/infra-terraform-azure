@@ -1,4 +1,3 @@
-# Obtem dinamicamente a versao estavel recomendada de Kubernetes para a regiao
 data "azurerm_kubernetes_service_versions" "current" {
   location        = var.location
   include_preview = false
@@ -38,8 +37,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   dns_prefix          = "aks-${var.environment}"
-  # Utiliza a versao mais recente estavel de producao disponivel na regiao
-  kubernetes_version = data.azurerm_kubernetes_service_versions.current.latest_version
+  kubernetes_version  = data.azurerm_kubernetes_service_versions.current.latest_version
 
   default_node_pool {
     name            = "system"
@@ -56,6 +54,9 @@ resource "azurerm_kubernetes_cluster" "aks" {
   network_profile {
     network_plugin    = "kubenet"
     load_balancer_sku = "standard"
+    service_cidr      = "172.16.0.0/16"
+    dns_service_ip    = "172.16.0.10"
+    pod_cidr          = "10.244.0.0/16"
   }
 
   tags = {
