@@ -39,7 +39,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   resource_group_name = azurerm_resource_group.rg.name
   dns_prefix          = "aks-${var.environment}"
   # Utiliza a versao mais recente estavel de producao disponivel na regiao
-  kubernetes_version  = data.azurerm_kubernetes_service_versions.current.latest_version
+  kubernetes_version = data.azurerm_kubernetes_service_versions.current.latest_version
 
   default_node_pool {
     name            = "system"
