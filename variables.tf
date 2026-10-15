@@ -13,5 +13,5 @@ variable "environment" {
 variable "node_vm_size" {
   type        = string
   description = "SKU da maquina virtual do node pool homologada na regiao"
-  default     = "Standard_B2s_v2_v2"
+  default     = "Standard_B2s_v2"
 }
